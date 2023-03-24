@@ -1,0 +1,49 @@
+# // DEFINE 'global' variables (with DEFAULT values)
+# `vars`: https://caddyserver.com/docs/caddyfile/directives/vars
+(global_vars) {
+  vars remote_user {$REMOTE_USER:mock_user}  # // DEFAULT: "mock_user"
+}
+
+
+:{$PORT:8027} {  # // DEFAULT port: 8027
+  log {
+    level DEBUG
+    output stdout
+  }
+
+  # `import`: https://caddyserver.com/docs/caddyfile/directives/import
+  import global_vars
+
+  # // DEFINE 'local' variables (with DEFAULT values)
+  vars url_base_path {$URL_BASE_PATH:the-base}
+  vars private_base_dir {$PRIVATE_BASE_DIR:./private_base_dir}
+
+  # // Based on: https://caddy.community/t/how-to-config-try-files/10657/2
+  redir /{vars.url_base_path} /{vars.url_base_path}/
+
+  # `handle_path`: https://caddyserver.com/docs/caddyfile/directives/handle_path
+  handle_path /{vars.url_base_path}/* {
+    # // DEFINE the 'root' dir
+    root * {vars.private_base_dir}
+
+    # // Based on: https://www.pmwiki.org/wiki/Cookbook/Caddy
+    # // DEFINE some 'path regular-expressions'
+    # `path_regexp`: https://caddyserver.com/docs/caddyfile/matchers#path-regexp
+    @dir_path  path_regexp _ ^/(?P<parent_path>.+)\/$
+    @file_path path_regexp _ ^/(?P<parent_path>.+)\/(?P<filename>.+\..+)$
+
+    # // REWRITE the 'path' to the dir or the file - (residing under private_base_dir)   
+    rewrite @dir_path  /{re._.parent_path}/{vars.remote_user}
+    rewrite @file_path /{re._.parent_path}/{vars.remote_user}/{re._.filename}
+
+    # // DISPLAY a listing of files
+    # `file_server`: https://caddyserver.com/docs/caddyfile/directives/file_server
+    file_server browse
+  }
+
+  # // DISPLAY a basic 'error message' - (e.g. "[404] Not Found")
+  # `handle_errors`: https://caddyserver.com/docs/caddyfile/directives/handle_errors
+  handle_errors {
+    respond "[{err.status_code}] {err.status_text}"
+  }
+}
